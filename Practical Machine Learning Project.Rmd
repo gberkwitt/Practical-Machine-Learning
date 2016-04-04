@@ -1,0 +1,144 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Glenn Berkwitt"
+date: "April 3, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Overview  
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+#Goal  
+The goal of this project is to build a machine learning algorithm to predict activity quality (classe) from activity monitors.  
+
+#Creating a Prediction Model  
+First we set the working directory.
+
+```{r}
+setwd("C:/Users/tester/Documents/Data Science/8. Practical Machine Learning")
+```
+
+And then we load the required packages.
+```{r}
+library(caret)
+library(ggplot2)
+library(randomForest)
+```
+
+Next, we download both the training and testing data files and take a look at it before attempting to build a model, the goal of which is to use any useful 
+variables to predict the manner in which a person did the exercise (classe).
+```{r}
+train_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(url=train_url, destfile="training.csv")
+test_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(url=test_url, destfile="testing.csv")
+```
+
+We read the data into our working directory . . .
+```{r}
+train <- read.csv("training.csv", na.strings=c("NA","#DIV/0!",""))
+test <- read.csv("testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+. . . take a look at the names . . .
+```{r}
+names(train)
+```
+
+. . . and take a look at its features.
+```{r}
+str(train)
+```
+
+We also want to review the summaries of the train data and, in particular, the *classe* variable, the variable we wish to predict.
+```{r}
+summary(train$classe)
+```
+
+#Split Training/Testing data  
+The first step in processing the data is to subset it, such that 60% of the data is designated as a training set and 40% as a test set. 
+```{r}
+inTrain <- createDataPartition(y=train$classe, p=0.6, list=FALSE)
+myTrain <- train[inTrain, ]
+myTest <- train[-inTrain, ]
+```
+
+Next we take a look at the dimensions of the two subsets to get sense of the number of observations in each.
+```{r}
+dim(myTrain)
+dim(myTest)
+```
+
+#Feature Selection  
+Next we process the datasets to ensure that we use only the variables that are most valuable and useful for building the model.  As such, we remove all variables with missing data and those with a near-zero variance.
+
+First, we remove the variables with mostly NAs (greater than 75%) and take a look at what is left after their removal.
+```{r}
+mytrain_SUB <- myTrain
+for (i in 1:length(myTrain)) {
+  if (sum(is.na(myTrain[ , i])) / nrow(myTrain) >= .75) {
+    for (j in 1:length(mytrain_SUB)) {
+      if (length(grep(names(myTrain[i]), names(mytrain_SUB)[j]))==1) {
+        mytrain_SUB <- mytrain_SUB[ , -j]
+      }
+    }
+  }
+}
+dim(mytrain_SUB)
+```
+
+This shows that we have eliminated 100 variables. To this reduced dataset, we remove variables that are obviously not predictors because of their near-zero variance.
+```{r}
+mytrain_SUB2 <- mytrain_SUB[,8:length(mytrain_SUB)]
+NZV <- nearZeroVar(mytrain_SUB2, saveMetrics = TRUE)
+dim(mytrain_SUB2)
+```
+
+This has eliminated 7 additional variables, reducing the number still included to 53.
+
+#Model Fitting  
+For the purpose of this experiment, a "random forest" technique has been selected because of its accuracy. Here we fit the model to the training data and then use it to predict *classe* on the subset of the testing data.
+```{r}
+set.seed(8791)
+modFit <- randomForest(classe~., data = mytrain_SUB2)
+print(modFit)
+```
+
+Next, we do a cross validation on the test data for out-of-sample error . . .
+```{r}
+predict1 <- predict(modFit, myTest, type = "class")
+confusionMatrix(myTest$classe, predict1)
+```
+
+. . . and then for the in-sample error.
+```{r}
+predict_train <- predict(modFit, myTrain, type = "class")
+confusionMatrix(myTrain$classe, predict_train)
+```
+
+When we compare the summaries, we see that the model, when run on the test data for cross validation, produces 99.3% accuracy for the out-of-sample error. When the model is fitted to the training data used to build the model it shows 100% accuracy, the in-sample error. 
+
+#Application of Model to the Test Set  
+Finally, we apply our model to the test set and this reveals that the predictions were correct.
+```{r}
+predict_FINAL <- predict(modFit, test, type = "class")
+print(predict_FINAL)
+```
+
+This final bit of code generates files with predictions to submit for assignment
+```{r}
+pml_write_files = function(x) {
+  n = length(x)
+  for (i in 1:n) {
+    filename = paste0("problem_id_", i, ".txt")
+    write.table(x[i], file=filename, quote=FALSE,row.names=FALSE, col.names=FALSE)
+  }
+}
+
+pml_write_files(predict_FINAL)
+```
+
